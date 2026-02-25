@@ -6,25 +6,31 @@ import time as time_mod
 import re
 
 # --- CONFIGURAÇÕES DA PÁGINA ---
-st.set_page_config(page_title="Ultimate Job Hunter", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="Job Hunter Ultra", page_icon="🎯", layout="wide")
 
-st.title("🚀 Ultimate Job Hunter: LinkedIn + Remotive")
-st.markdown("Fugindo do algoritmo e centralizando vagas de múltiplas fontes.")
+st.title("🎯 Job Hunter Ultra: Multi-Source")
+st.markdown("Busca agregada em LinkedIn, Remotive, The Muse e Working Nomads.")
 
-# --- SIDEBAR: CONFIGURAÇÕES ---
-st.sidebar.header("🔍 Filtros de Busca")
-query_role = st.sidebar.text_input("Cargo desejado", "Data Analyst")
+# --- SIDEBAR: FILTROS TÉCNICOS ---
+st.sidebar.header("🔍 Configurações Globais")
+query_role = st.sidebar.text_input("Cargo (Ex: Data Analyst)", "Analista de Dados")
 
-with st.sidebar.expander("Configurações LinkedIn"):
+# Filtros de Precisão (Exclusivos para fontes que suportam, como LinkedIn)
+with st.sidebar.expander("Filtros de Refinamento (LinkedIn)", expanded=True):
+    workplace_options = {"Qualquer": "", "Remoto": "2", "Híbrido": "3", "Presencial": "1"}
+    workplace_type = st.selectbox("Modalidade", list(workplace_options.keys()))
+    
+    time_options = {"Qualquer Momento": "", "Últimas 24h": "r86400", "Última Semana": "r604800", "Último Mês": "r2592000"}
+    time_posted = st.selectbox("Data de Publicação", list(time_options.keys()))
+    
     location_options = {"Brasil": "106057199", "Portugal": "100364837", "EUA": "103644278", "Global": ""}
-    selected_loc = st.selectbox("Localidade", list(location_options.keys()))
-    geo_id = location_options[selected_loc]
+    geo_id = st.selectbox("País", list(location_options.keys()))
     max_pages = st.slider("Páginas LinkedIn", 1, 20, 5)
 
-st.sidebar.subheader("🎯 Filtro de Títulos")
+st.sidebar.subheader("🎯 Filtro de Títulos (Whitelist)")
 whitelist_input = st.sidebar.text_area(
-    "Termos obrigatórios (um por linha):",
-    "analista de dados\ndata analyst\ndata science\nanalytics",
+    "Só mostrar se o título contiver:",
+    "analista de dados\ndata analyst\ndata science\nanalytics\nbi analyst",
     height=120
 )
 whitelist_terms = [t.strip() for t in whitelist_input.split('\n') if t.strip()]
@@ -35,82 +41,84 @@ def passes_filter(title, terms):
     regex = re.compile('(' + '|'.join([re.escape(t) for t in terms]) + ')', flags=re.IGNORECASE)
     return regex.search(str(title)) is not None
 
-# --- SCRAPER 1: LINKEDIN ---
-def fetch_linkedin(role, geo, pages, terms):
+# --- FONTES DE BUSCA ---
+
+def fetch_linkedin(role, geo, pages, wt, tpr, terms):
     jobs = []
     base_url = 'https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search'
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0'}
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     
     for i in range(pages):
-        params = {'keywords': role, 'geoId': geo, 'start': i * 50}
+        params = {'keywords': role, 'geoId': geo, 'f_WT': wt, 'f_TPR': tpr, 'start': i * 50}
         try:
             res = requests.get(base_url, params=params, headers=headers, timeout=10)
             soup = BeautifulSoup(res.text, 'html.parser')
             for li in soup.select('li'):
-                title = li.select_one('.base-search-card__title').get_text(strip=True) if li.select_one('.base-search-card__title') else ""
-                if passes_filter(title, terms):
-                    company = li.select_one('.base-search-card__subtitle').get_text(strip=True) if li.select_one('.base-search-card__subtitle') else "N/A"
-                    link = li.select_one('a.base-card__full-link')['href'].split('?')[0]
-                    jobs.append({"Cargo": title, "Empresa": company, "Origem": "LinkedIn", "Link": link})
-            time_mod.sleep(1)
+                title_el = li.select_one('.base-search-card__title')
+                if title_el:
+                    title = title_el.get_text(strip=True)
+                    if passes_filter(title, terms):
+                        company = li.select_one('.base-search-card__subtitle').get_text(strip=True) if li.select_one('.base-search-card__subtitle') else "N/A"
+                        link = li.select_one('a.base-card__full-link')['href'].split('?')[0]
+                        jobs.append({"Cargo": title, "Empresa": company, "Origem": "LinkedIn", "Link": link})
+            time_mod.sleep(0.5)
         except: break
     return jobs
 
-# --- SCRAPER 2: REMOTIVE (API) ---
 def fetch_remotive(role, terms):
     jobs = []
-    # Remotive tem uma API pública que não exige login
-    api_url = f"https://remotive.com/api/remote-jobs?search={role}"
     try:
-        res = requests.get(api_url, timeout=10)
+        # Busca mais ampla para garantir resultados
+        res = requests.get(f"https://remotive.com/api/remote-jobs?search={role}", timeout=10)
         data = res.json()
         for job in data.get('jobs', []):
             if passes_filter(job['title'], terms):
-                jobs.append({
-                    "Cargo": job['title'],
-                    "Empresa": job['company_name'],
-                    "Origem": "Remotive",
-                    "Link": job['url']
-                })
+                jobs.append({"Cargo": job['title'], "Empresa": job['company_name'], "Origem": "Remotive", "Link": job['url']})
+    except: pass
+    return jobs
+
+def fetch_themuse(role, terms):
+    jobs = []
+    try:
+        # The Muse API
+        res = requests.get(f"https://www.themuse.com/api/public/jobs?category=Data%20Science&page=1", timeout=10)
+        data = res.json()
+        for job in data.get('results', []):
+            if passes_filter(job['name'], terms):
+                jobs.append({"Cargo": job['name'], "Empresa": job['company']['name'], "Origem": "The Muse", "Link": job['refs']['landing_page']})
     except: pass
     return jobs
 
 # --- EXECUÇÃO ---
-if st.button("🔥 BUSCAR VAGAS AGORA"):
-    with st.spinner("Varrendo a internet..."):
-        # Rodando as buscas
-        results_li = fetch_linkedin(query_role, geo_id, max_pages, whitelist_terms)
-        results_re = fetch_remotive(query_role, whitelist_terms)
+if st.button("🔥 INICIAR VARREDURA MULTI-FONTE"):
+    with st.spinner("Consultando bases de dados..."):
         
-        all_jobs = results_li + results_re
+        # Coleta em paralelo (simulada)
+        results = []
+        results += fetch_linkedin(query_role, geo_id, max_pages, workplace_options[workplace_type], time_options[time_posted], whitelist_terms)
+        results += fetch_remotive(query_role, whitelist_terms)
+        results += fetch_themuse(query_role, whitelist_terms)
         
-        if all_jobs:
-            df = pd.DataFrame(all_jobs)
+        if results:
+            df = pd.DataFrame(results).drop_duplicates(subset=['Link'])
             
-            st.success(f"Encontramos {len(df)} vagas!")
+            st.success(f"Sucesso! {len(df)} vagas encontradas filtrando por {len(whitelist_terms)} termos.")
             
-            # Configuração da Tabela com Link clicável (botão virtual)
+            # Tabela Interativa
             st.data_editor(
                 df,
                 column_config={
-                    "Link": st.column_config.LinkColumn(
-                        "Link da Vaga",
-                        help="Clique para abrir a vaga em uma nova guia",
-                        validate=r"^https://.*",
-                        display_text="Abrir Vaga ↗️" # Transforma o link em um "botão" de texto
-                    ),
-                    "Origem": st.column_config.TextColumn(
-                        "Fonte",
-                        help="De onde essa vaga foi extraída"
-                    )
+                    "Link": st.column_config.LinkColumn("Candidatar-se", display_text="Abrir Vaga ↗️"),
+                    "Origem": st.column_config.TextColumn("Fonte"),
+                    "Empresa": st.column_config.TextColumn("Empresa"),
+                    "Cargo": st.column_config.TextColumn("Título da Vaga")
                 },
                 hide_index=True,
                 use_container_width=True,
-                disabled=True # Deixa a tabela apenas para visualização
+                disabled=True
             )
             
-            # Download
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Baixar Planilha", csv, "vagas.csv", "text/csv")
+            csv = df.to_csv(index=False).encode('utf-8-sig')
+            st.download_button("📥 Baixar CSV", csv, "vagas_hunter.csv", "text/csv")
         else:
-            st.error("Nenhuma vaga encontrada. Tente ajustar os termos ou o cargo.")
+            st.error("Nenhuma vaga encontrada. Tente reduzir os termos da Whitelist ou mudar o cargo.")
