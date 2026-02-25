@@ -20,9 +20,7 @@ Uma ferramenta web desenvolvida em Python para buscar vagas no LinkedIn de forma
 * [Pandas](https://pandas.pydata.org/) (Manipulação de Dados)
 * [Requests](https://requests.readthedocs.io/) (HTTP)
 
-## 📦 Como Instalar e Rodar
+## 📦 Como Rodar
 
-1. **Clone o repositório**:
-   ```bash
-   git clone [https://github.com/seu-usuario/linkedin-job-hunter.git](https://github.com/seu-usuario/linkedin-job-hunter.git)
-   cd linkedin-job-hunter
+* **Acesse via Streamlit**: [https://schenkeljobsearch.streamlit.app/](https://schenkeljobsearch.streamlit.app/)
+* **Baixe o notebook ipynb**: [linkedin_jobs_scraper.ipynb](https://github.com/schenkel94/JobSearch/edit/main/linkedin_jobs_scraper.ipynb/)
