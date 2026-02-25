@@ -61,7 +61,7 @@ whitelist_input = st.sidebar.text_area(
 )
 title_whitelist_terms = [t.strip() for t in whitelist_input.split('\n') if t.strip()]
 
-# --- LÓGICA DO SCRAPER (Baseada no seu arquivo) ---
+# --- LÓGICA DO SCRAPER ---
 
 headers_obj = {
     'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -86,8 +86,6 @@ def parse_job_cards(html_txt, terms):
         link_el = li_obj.select_one('a.base-card__full-link')
 
         cargo_val = title_el.get_text(strip=True) if title_el else None
-        
-        # Só adiciona se passar no filtro de Regex
         if not title_matches(cargo_val, terms):
             continue
 
@@ -155,9 +153,22 @@ if st.button("🚀 Iniciar Busca"):
     if all_rows:
         df = pd.DataFrame(all_rows)
         st.success(f"Encontradas {len(df)} vagas relevantes!")
-        st.dataframe(df, use_container_width=True)
         
-        # Botão de Download
+        # --- EXIBIÇÃO COM BOTÃO/LINK DIRETO ---
+        st.data_editor(
+            df,
+            column_config={
+                "Link": st.column_config.LinkColumn(
+                    "Link Direto",
+                    display_text="Abrir Vaga ↗️" # Texto que aparecerá no lugar da URL
+                ),
+            },
+            hide_index=True,
+            use_container_width=True,
+            disabled=True # Mantém a tabela apenas para visualização/clique
+        )
+        
+        # Botão de Download CSV
         csv = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
         st.download_button(
             label="📥 Baixar Resultados como CSV",
