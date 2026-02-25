@@ -1,5 +1,5 @@
 # 🕵️ LinkedIn Job Hunter (Anti-Algoritmo)
-* [Acesse o app no Streamlit]([https://www.python.org/](https://schenkeljobsearch.streamlit.app/))
+* [Acesse o app no Streamlit](https://schenkeljobsearch.streamlit.app/)
 
 Uma ferramenta web desenvolvida em Python para buscar vagas no LinkedIn de forma pura, utilizando o endpoint público da plataforma. O objetivo é permitir que o usuário encontre oportunidades reais baseadas em filtros técnicos, ignorando as recomendações enviesadas do algoritmo do LinkedIn.
 
