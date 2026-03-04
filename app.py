@@ -19,44 +19,40 @@ st.sidebar.header("Configurações da Busca")
 
 query_role = st.sidebar.text_input("Cargo/Keywords", "Analista de Dados")
 
-# Mapeamento de localidade (geoId)
-location_options = {
-    "Brasil": "106057199",
-    "Portugal": "100364837",
-    "Estados Unidos": "103644278",
-    "Mundial (Global)": ""
-}
-selected_loc = st.sidebar.selectbox("Localidade", list(location_options.keys()))
-geo_id = location_options[selected_loc]
+# Localidade agora é texto livre
+location_input = st.sidebar.text_input("Localidade", "Brasil")
 
 # Tipo de vaga (f_WT)
 workplace_options = {
-    "Qualquer": "",
     "Remoto": "2",
     "Híbrido": "3",
-    "Presencial": "1"
+    "Presencial": "1",
+    "Qualquer": ""
 }
-workplace_type = st.sidebar.selectbox("Modalidade", list(workplace_options.keys()))
+workplace_type = st.sidebar.selectbox("Modalidade", list(workplace_options.keys()), index=0) # Default: Remoto
 f_wt_val = workplace_options[workplace_type]
 
-# Período (f_TPR)
+# Período (f_TPR) - Adicionado 1h e 12h
 time_options = {
+    "Última Hora": "r3600",
+    "Últimas 12h": "r43200",
     "Últimas 24h": "r86400",
     "Última Semana": "r604800",
     "Último Mês": "r2592000",
     "Qualquer Momento": ""
 }
-time_posted_range = st.sidebar.selectbox("Data de Publicação", list(time_options.keys()))
+time_posted_range = st.sidebar.selectbox("Data de Publicação", list(time_options.keys()), index=2) # Default: 24h
 f_tpr_val = time_options[time_posted_range]
 
-max_pages = st.sidebar.slider("Número de páginas para ler", 1, 30, 10)
-sleep_s = st.sidebar.slider("Intervalo entre páginas (segundos)", 0.5, 5.0, 1.2)
+# Ajustes de Sliders conforme a imagem
+max_pages = st.sidebar.slider("Número de páginas para ler", 1, 30, 15)
+sleep_s = st.sidebar.slider("Intervalo entre páginas (segundos)", 0.5, 5.0, 3.00)
 
-# --- FILTRO DE TÍTULO (WHITELIST) ---
+# --- FILTRO DE TÍTULO (WHITELIST) - Ajustado conforme imagem ---
 st.sidebar.subheader("Filtro de Relevância")
 whitelist_input = st.sidebar.text_area(
     "Termos obrigatórios no título (um por linha):",
-    "analista de dados\ndata analyst\ndata science\nengenheiro de dados",
+    "Analista de Dados\nData Analyst\nBusiness Intelligence\nBI",
     height=150
 )
 title_whitelist_terms = [t.strip() for t in whitelist_input.split('\n') if t.strip()]
@@ -106,7 +102,7 @@ def parse_job_cards(html_txt, terms):
 if st.button("🚀 Iniciar Busca"):
     all_rows = []
     seen_links = set()
-    page_size = 50
+    page_size = 25 # O endpoint de guest geralmente usa saltos de 25 em 25
     base_url = 'https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search'
     
     progress_bar = st.progress(0)
@@ -118,7 +114,7 @@ if st.button("🚀 Iniciar Busca"):
         
         params_obj = {
             'keywords': query_role,
-            'geoId': geo_id,
+            'location': location_input, # Trocado geoId por location para aceitar texto
             'f_WT': f_wt_val,
             'f_TPR': f_tpr_val,
             'start': start_idx
@@ -127,14 +123,14 @@ if st.button("🚀 Iniciar Busca"):
         try:
             resp = requests.get(base_url, params=params_obj, headers=headers_obj, timeout=30)
             if resp.status_code != 200:
-                st.warning(f"O LinkedIn parou de responder (Status {resp.status_code}).")
+                st.warning(f"O LinkedIn parou de responder (Status {resp.status_code}). Tente aumentar o intervalo entre páginas.")
                 break
             
             rows = parse_job_cards(resp.text, title_whitelist_terms)
             
             if not rows:
-                st.info("Não foram encontrados novos resultados nesta página.")
-                break
+                # Se a página veio vazia (mesmo com status 200), pode ser o fim dos resultados
+                pass
                 
             for r in rows:
                 if r['Link'] not in seen_links:
@@ -160,12 +156,12 @@ if st.button("🚀 Iniciar Busca"):
             column_config={
                 "Link": st.column_config.LinkColumn(
                     "Link Direto",
-                    display_text="Abrir Vaga ↗️" # Texto que aparecerá no lugar da URL
+                    display_text="Abrir Vaga ↗️"
                 ),
             },
             hide_index=True,
             use_container_width=True,
-            disabled=True # Mantém a tabela apenas para visualização/clique
+            disabled=True
         )
         
         # Botão de Download CSV
@@ -177,4 +173,4 @@ if st.button("🚀 Iniciar Busca"):
             mime="text/csv",
         )
     else:
-        st.error("Nenhuma vaga encontrada com os critérios e filtros atuais.")
+        st.error("Nenhuma vaga encontrada com os critérios e filtros atuais. Tente remover termos da Whitelist ou mudar a localidade.")
