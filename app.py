@@ -4,181 +4,111 @@ import pandas as pd
 from bs4 import BeautifulSoup
 import time as time_mod
 import re
-from io import BytesIO
 
 # --- CONFIGURAÇÕES DA PÁGINA ---
 st.set_page_config(page_title="LinkedIn Job Hunter", page_icon="🕵️", layout="wide")
 
 st.title("🕵️ LinkedIn Job Hunter (Anti-Algoritmo)")
-st.markdown("""
-Esta ferramenta utiliza o endpoint público do LinkedIn para buscar vagas sem a interferência dos algoritmos de recomendação.
-""")
 
 # --- SIDEBAR: CONFIGURAÇÕES DA BUSCA ---
 st.sidebar.header("Configurações da Busca")
 
 query_role = st.sidebar.text_input("Cargo/Keywords", "Analista de Dados")
 
-# Alterado de dropdown fixo para texto livre para evitar erros de geoId
-location_input = st.sidebar.text_input("Localidade (Ex: Brasil, São Paulo, Remote)", "Brasil")
-
-# Tipo de vaga (f_WT)
-workplace_options = {
-    "Remoto": "2",
-    "Híbrido": "3",
-    "Presencial": "1",
-    "Qualquer": ""
+# Mapeamento exaustivo de geoIds conforme solicitado
+geo_locations = {
+    "Brasil (País)": "106057199",
+    "América Latina": "91000007",
+    "Estados Unidos": "103644278",
+    "Portugal": "100364837",
+    "Argentina": "100446943",
+    "--- ESTADOS BRASILEIROS ---": "106057199",
+    "Acre": "105555430", "Alagoas": "101650381", "Amapá": "101416467",
+    "Amazonas": "103135063", "Bahia": "105740332", "Ceará": "101188310",
+    "Distrito Federal": "100863923", "Espírito Santo": "104192087", "Goiás": "105459306",
+    "Maranhão": "106292275", "Mato Grosso": "100236487", "Mato Grosso do Sul": "105943343",
+    "Minas Gerais": "102830846", "Pará": "106602330", "Paraíba": "104278788",
+    "Paraná": "100080645", "Pernambuco": "103185348", "Piauí": "103233866",
+    "Rio de Janeiro": "102551460", "Rio Grande do Norte": "103063548", "Rio Grande do Sul": "105268305",
+    "Rondônia": "102506634", "Roraima": "102717983", "Santa Catarina": "102872391",
+    "São Paulo": "104815124", "Sergipe": "105572886", "Tocantins": "106191438"
 }
+
+selected_loc = st.sidebar.selectbox("Localidade", list(geo_locations.keys()), index=0)
+geo_id = geo_locations[selected_loc]
+
+# Modalidade
+workplace_options = {"Remoto": "2", "Híbrido": "3", "Presencial": "1", "Qualquer": ""}
 workplace_type = st.sidebar.selectbox("Modalidade", list(workplace_options.keys()), index=0)
 f_wt_val = workplace_options[workplace_type]
 
-# Período (f_TPR)
+# Período
 time_options = {
-    "Última Hora": "r3600",
-    "Últimas 12h": "r43200",
-    "Últimas 24h": "r86400",
-    "Última Semana": "r604800",
-    "Último Mês": "r2592000",
-    "Qualquer Momento": ""
+    "Últimas 24h": "r86400", "Últimas 12h": "r43200", "Última Hora": "r3600",
+    "Última Semana": "r604800", "Último Mês": "r2592000", "Qualquer Momento": ""
 }
-time_posted_range = st.sidebar.selectbox("Data de Publicação", list(time_options.keys()), index=2)
+time_posted_range = st.sidebar.selectbox("Data de Publicação", list(time_options.keys()), index=0)
 f_tpr_val = time_options[time_posted_range]
 
-max_pages = st.sidebar.slider("Número de páginas para ler", 1, 30, 15)
-sleep_s = st.sidebar.slider("Intervalo entre páginas (segundos)", 0.5, 5.0, 3.00)
+max_pages = st.sidebar.slider("Número de páginas", 1, 30, 15)
+sleep_s = st.sidebar.slider("Intervalo (segundos)", 0.5, 5.0, 3.00)
 
-# --- FILTRO DE RELEVÂNCIA (WHITELIST) ---
+# Whitelist
 st.sidebar.subheader("Filtro de Relevância")
-whitelist_input = st.sidebar.text_area(
-    "Termos obrigatórios no título (um por linha):",
-    "Analista de Dados\nData Analyst\nBusiness Intelligence\nBI",
-    height=150
-)
+whitelist_input = st.sidebar.text_area("Termos obrigatórios:", "Analista de Dados\nData Analyst\nBusiness Intelligence\nBI")
 title_whitelist_terms = [t.strip() for t in whitelist_input.split('\n') if t.strip()]
 
-# --- LÓGICA DO SCRAPER ---
+# --- LÓGICA ---
+headers = {'User-Agent': 'Mozilla/5.0'}
 
-headers_obj = {
-    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-}
-
-def title_matches(title_txt, terms):
-    if not title_txt or not terms:
-        return False
-    regex = re.compile('(' + '|'.join([re.escape(t) for t in terms]) + ')', flags=re.IGNORECASE)
-    return regex.search(str(title_txt).strip()) is not None
-
-def parse_job_cards(html_txt, terms):
-    soup_obj = BeautifulSoup(html_txt, 'html.parser')
-    job_lis = soup_obj.select('li')
+def parse_job_cards(html, terms):
+    soup = BeautifulSoup(html, 'html.parser')
+    cards = soup.select('li')
+    if not cards: return None
     
-    if not job_lis:
-        return None 
-
-    rows_list = []
-    for li_obj in job_lis:
-        title_el = li_obj.select_one('h3.base-search-card__title')
-        company_el = li_obj.select_one('h4.base-search-card__subtitle')
-        time_el = li_obj.select_one('time')
-        link_el = li_obj.select_one('a.base-card__full-link')
-
-        cargo_val = title_el.get_text(strip=True) if title_el else None
+    rows = []
+    for li in cards:
+        title_el = li.select_one('h3.base-search-card__title')
+        cargo = title_el.get_text(strip=True) if title_el else None
         
-        if not title_matches(cargo_val, terms):
-            continue
-
-        empresa_val = company_el.get_text(strip=True) if company_el else None
-        # Pegamos o atributo 'datetime' para ordenar de forma precisa
-        data_iso = time_el.get('datetime') if time_el else None
-        publicada_val = time_el.get_text(strip=True) if time_el else None
-        link_val = link_el.get('href').split('?')[0] if link_el else None
-
-        if cargo_val:
-            rows_list.append({
-                'Cargo': cargo_val,
-                'Empresa': empresa_val,
-                'Publicada em': publicada_val,
-                'Data_ISO': data_iso,
-                'Link': link_val
+        if cargo and any(re.search(re.escape(t), cargo, re.I) for t in terms):
+            time_el = li.select_one('time')
+            rows.append({
+                'Cargo': cargo,
+                'Empresa': li.select_one('h4.base-search-card__subtitle').get_text(strip=True),
+                'Publicada': time_el.get_text(strip=True) if time_el else "N/A",
+                'Data_ISO': time_el.get('datetime') if time_el else "0000-00-00",
+                'Link': li.select_one('a.base-card__full-link').get('href').split('?')[0]
             })
-    return rows_list
+    return rows
 
-# --- EXECUÇÃO ---
 if st.button("🚀 Iniciar Busca"):
-    all_rows = []
-    seen_links = set()
-    page_size = 25 
-    base_url = 'https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search'
-    
-    progress_bar = st.progress(0)
-    status_text = st.empty()
+    all_rows, seen_links = [], set()
+    bar = st.progress(0)
+    status = st.empty()
 
-    for page_idx in range(max_pages):
-        start_idx = page_idx * page_size
-        status_text.text(f"Buscando página {page_idx + 1}... ({len(all_rows)} vagas encontradas)")
+    for p in range(max_pages):
+        status.text(f"Página {p+1}/{max_pages} | {len(all_rows)} vagas...")
+        res = requests.get('https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search', 
+                           params={'keywords': query_role, 'geoId': geo_id, 'f_WT': f_wt_val, 'f_TPR': f_tpr_val, 'start': p*25}, 
+                           headers=headers)
         
-        params_obj = {
-            'keywords': query_role,
-            'location': location_input, # Trocado geoId por location (texto livre)
-            'f_WT': f_wt_val,
-            'f_TPR': f_tpr_val,
-            'start': start_idx
-        }
+        if res.status_code != 200: break
         
-        try:
-            resp = requests.get(base_url, params=params_obj, headers=headers_obj, timeout=30)
-            
-            if resp.status_code != 200:
-                st.warning(f"Finalizado: LinkedIn bloqueou a requisição (Status {resp.status_code}).")
-                break
-            
-            rows = parse_job_cards(resp.text, title_whitelist_terms)
-            
-            if rows is None:
-                st.info(f"Sem mais resultados na página {page_idx + 1}.")
-                break
-                
-            for r in rows:
-                if r['Link'] not in seen_links:
-                    seen_links.add(r['Link'])
-                    all_rows.append(r)
-            
-            progress_bar.progress((page_idx + 1) / max_pages)
-            time_mod.sleep(sleep_s)
-            
-        except Exception as e:
-            st.error(f"Erro: {e}")
-            break
+        found = parse_job_cards(res.text, title_whitelist_terms)
+        if found is None: break
+        
+        for r in found:
+            if r['Link'] not in seen_links:
+                seen_links.add(r['Link'])
+                all_rows.append(r)
+        
+        bar.progress((p + 1) / max_pages)
+        time_mod.sleep(sleep_s)
 
-    status_text.text("Busca finalizada!")
-    progress_bar.progress(1.0)
-    
     if all_rows:
-        df = pd.DataFrame(all_rows)
-        
-        # ORDENAÇÃO: Garante que as mais recentes (ISO date) fiquem no topo
-        if 'Data_ISO' in df.columns:
-            df = df.sort_values(by='Data_ISO', ascending=False).drop(columns=['Data_ISO'])
-            
-        st.success(f"Encontradas {len(df)} vagas relevantes!")
-        
-        st.data_editor(
-            df,
-            column_config={
-                "Link": st.column_config.LinkColumn("Link Direto", display_text="Abrir Vaga ↗️"),
-            },
-            hide_index=True,
-            use_container_width=True,
-            disabled=True
-        )
-        
-        csv = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-        st.download_button(
-            label="📥 Baixar Resultados como CSV",
-            data=csv,
-            file_name=f"vagas_{query_role.replace(' ', '_')}.csv",
-            mime="text/csv",
-        )
+        df = pd.DataFrame(all_rows).sort_values(by='Data_ISO', ascending=False).drop(columns=['Data_ISO'])
+        st.data_editor(df, column_config={"Link": st.column_config.LinkColumn("Link", display_text="Abrir ↗️")}, hide_index=True)
+        st.download_button("📥 Baixar CSV", df.to_csv(index=False).encode('utf-8-sig'), "vagas.csv", "text/csv")
     else:
-        st.error("Nenhuma vaga encontrada para os critérios informados.")
+        st.error("Nenhuma vaga encontrada.")
