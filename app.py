@@ -18,7 +18,9 @@ Esta ferramenta utiliza o endpoint público do LinkedIn para buscar vagas sem a 
 st.sidebar.header("Configurações da Busca")
 
 query_role = st.sidebar.text_input("Cargo/Keywords", "Analista de Dados")
-location_input = st.sidebar.text_input("Localidade", "Brasil")
+
+# Alterado de dropdown fixo para texto livre para evitar erros de geoId
+location_input = st.sidebar.text_input("Localidade (Ex: Brasil, São Paulo, Remote)", "Brasil")
 
 # Tipo de vaga (f_WT)
 workplace_options = {
@@ -69,11 +71,10 @@ def title_matches(title_txt, terms):
 
 def parse_job_cards(html_txt, terms):
     soup_obj = BeautifulSoup(html_txt, 'html.parser')
-    # BUSCA INICIAL: Verifica se existem 'li' (cards de vaga) na página
     job_lis = soup_obj.select('li')
     
     if not job_lis:
-        return None # Sinaliza que a página está realmente vazia
+        return None 
 
     rows_list = []
     for li_obj in job_lis:
@@ -84,11 +85,12 @@ def parse_job_cards(html_txt, terms):
 
         cargo_val = title_el.get_text(strip=True) if title_el else None
         
-        # Filtro de Whitelist
         if not title_matches(cargo_val, terms):
             continue
 
         empresa_val = company_el.get_text(strip=True) if company_el else None
+        # Pegamos o atributo 'datetime' para ordenar de forma precisa
+        data_iso = time_el.get('datetime') if time_el else None
         publicada_val = time_el.get_text(strip=True) if time_el else None
         link_val = link_el.get('href').split('?')[0] if link_el else None
 
@@ -97,6 +99,7 @@ def parse_job_cards(html_txt, terms):
                 'Cargo': cargo_val,
                 'Empresa': empresa_val,
                 'Publicada em': publicada_val,
+                'Data_ISO': data_iso,
                 'Link': link_val
             })
     return rows_list
@@ -113,11 +116,11 @@ if st.button("🚀 Iniciar Busca"):
 
     for page_idx in range(max_pages):
         start_idx = page_idx * page_size
-        status_text.text(f"Buscando página {page_idx + 1}... (Total acumulado: {len(all_rows)} vagas)")
+        status_text.text(f"Buscando página {page_idx + 1}... ({len(all_rows)} vagas encontradas)")
         
         params_obj = {
             'keywords': query_role,
-            'location': location_input,
+            'location': location_input, # Trocado geoId por location (texto livre)
             'f_WT': f_wt_val,
             'f_TPR': f_tpr_val,
             'start': start_idx
@@ -127,15 +130,13 @@ if st.button("🚀 Iniciar Busca"):
             resp = requests.get(base_url, params=params_obj, headers=headers_obj, timeout=30)
             
             if resp.status_code != 200:
-                st.warning(f"Busca encerrada: LinkedIn parou de responder (Status {resp.status_code}).")
+                st.warning(f"Finalizado: LinkedIn bloqueou a requisição (Status {resp.status_code}).")
                 break
             
-            # Chama a função otimizada
             rows = parse_job_cards(resp.text, title_whitelist_terms)
             
-            # OTIMIZAÇÃO: Se 'rows' for None, a página não tinha nenhuma vaga.
             if rows is None:
-                st.info(f"Fim dos resultados atingido na página {page_idx + 1}.")
+                st.info(f"Sem mais resultados na página {page_idx + 1}.")
                 break
                 
             for r in rows:
@@ -147,7 +148,7 @@ if st.button("🚀 Iniciar Busca"):
             time_mod.sleep(sleep_s)
             
         except Exception as e:
-            st.error(f"Erro na requisição: {e}")
+            st.error(f"Erro: {e}")
             break
 
     status_text.text("Busca finalizada!")
@@ -155,6 +156,11 @@ if st.button("🚀 Iniciar Busca"):
     
     if all_rows:
         df = pd.DataFrame(all_rows)
+        
+        # ORDENAÇÃO: Garante que as mais recentes (ISO date) fiquem no topo
+        if 'Data_ISO' in df.columns:
+            df = df.sort_values(by='Data_ISO', ascending=False).drop(columns=['Data_ISO'])
+            
         st.success(f"Encontradas {len(df)} vagas relevantes!")
         
         st.data_editor(
@@ -175,4 +181,4 @@ if st.button("🚀 Iniciar Busca"):
             mime="text/csv",
         )
     else:
-        st.error("Nenhuma vaga encontrada com os filtros de título aplicados.")
+        st.error("Nenhuma vaga encontrada para os critérios informados.")
