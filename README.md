@@ -3,7 +3,7 @@
 
 Uma ferramenta web desenvolvida em Python para buscar vagas no LinkedIn de forma pura, utilizando o endpoint público da plataforma. O objetivo é permitir que o usuário encontre oportunidades reais baseadas em filtros técnicos, ignorando as recomendações enviesadas do algoritmo do LinkedIn.
 
-## 🚀 Funcionalidades
+## Funcionalidades
 
 * **Busca Direta**: Acesso ao endpoint `jobs-guest` do LinkedIn para resultados não manipulados.
 * **Filtros Personalizados**: Configure cargo, localidade (via geoId), modalidade (Remoto/Híbrido) e período de publicação diretamente na interface.
@@ -12,7 +12,7 @@ Uma ferramenta web desenvolvida em Python para buscar vagas no LinkedIn de forma
 * **Exportação**: Download dos resultados em formato CSV com um clique.
 * **Links Diretos**: Botão dedicado para abrir a vaga em uma nova guia do navegador.
 
-## 🛠️ Tecnologias Utilizadas
+## Tecnologias Utilizadas
 
 * [Python](https://www.python.org/)
 * [Streamlit](https://streamlit.io/) (Interface Web)
@@ -20,7 +20,7 @@ Uma ferramenta web desenvolvida em Python para buscar vagas no LinkedIn de forma
 * [Pandas](https://pandas.pydata.org/) (Manipulação de Dados)
 * [Requests](https://requests.readthedocs.io/) (HTTP)
 
-## 📦 Como Rodar
+## Como Rodar
 
 * **Acesse via Streamlit**: [https://schenkeljobsearch.streamlit.app/](https://schenkeljobsearch.streamlit.app/)
 * **Baixe o notebook ipynb**: [linkedin_jobs_scraper.ipynb](https://github.com/schenkel94/JobSearch/edit/main/linkedin_jobs_scraper.ipynb/)
